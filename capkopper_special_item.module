@@ -1,0 +1,709 @@
+<?php
+
+/**
+ * @file
+ * Implementation of capKopper Special Item.
+ */
+
+use Drupal\capkopper_special_item\Entity\Item as SpecialItem;
+use Drupal\capkopper_special_item\Entity\ItemType as SpecialItemType;
+
+/**
+ * Implements hook_hook_info().
+ */
+function capkopper_special_item_hook_info() {
+  return array(
+    'capkopper_special_item_access_alter' => array(
+      'group' => 'capKopper',
+    ),
+  );
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function capkopper_special_item_entity_info() {
+  $return['capkopper_special_item'] = array(
+    'label' => t('Special item'),
+    // The entity class and controller class extend the default entity classes.
+    'entity class' => 'Drupal\\capkopper_special_item\\Entity\\Item',
+    'controller class' => 'Drupal\\capkopper_special_item\\Entity\\APIController\\Item',
+    //'views controller class' => 'EntityDefaultViewsController',
+    'extra fields controller class' => 'Drupal\\capkopper_special_item\\Entity\\ExtraFields\\Item',
+    'base table' => 'capkopper_special_item',
+    'fieldable' => TRUE,
+    'exportable' => FALSE,
+    'entity keys' => array(
+      'id' => 'item_id',
+      'bundle' => 'type',
+      'label' => 'label',
+      'language' => 'language',
+    ),
+    // Bundles are defined by the types below.
+    'bundles' => array(),
+    'bundle keys' => array(
+      'bundle' => 'type',
+    ),
+    'view modes' => array(
+      'full' => array(
+        'label' => t('Default'),
+        'custom settings' => FALSE,
+      ),
+    ),
+    'label callback' => 'capkopper_special_item_label',
+    'plural label' => 'Special items',
+    'uri callback' => NULL, // Use 'entity_class_uri' and update
+    'access callback' => 'capkopper_special_item_access',
+    'module' => 'capkopper_special_item',
+    // The information below is used by the Controller;
+    // which extends the EntityDefaultUIController.
+    'admin ui' => array(
+      'path' => 'admin/content/special-item',
+      'file' => 'includes/capkopper_special_item.admin.inc',
+      'controller class' => 'Drupal\\capkopper_special_item\\Entity\\UIController\\Item',
+      'menu wildcard' => '%capkopper_special_item',
+    ),
+    // Add translation support.
+    'translation' => array(
+      'locale' => TRUE,
+      'entity_translation' => array(
+        'class' => 'Drupal\\capkopper_special_item\\Entity\\TranslationHandler\\Item',
+        'bundle callback' => 'capkopper_special_item_entity_translation_supported_type',
+        'default settings' => array(
+          'default_language' => LANGUAGE_NONE,
+          'hide_language_selector' => FALSE,
+        ),
+        'base path' => 'admin/content/special-item/manage/%capkopper_special_item',
+        'path wildcard' => '%capkopper_special_item',
+      ),
+    ),
+    // Add title replacement support for translations.
+    'field replacement' => array(
+      'label' => array(
+        'field' => array(
+          'type' => 'text',
+          'cardinality' => 1,
+          'translatable' => TRUE,
+        ),
+        'instance' => array(
+          'label' => t('Label'),
+          'required' => TRUE,
+          'settings' => array(
+            'text_processing' => 0,
+          ),
+          'widget' => array(
+            'weight' => -5,
+          ),
+        ),
+      ),
+    ),
+    // Integrate with Inline Entity Form.
+    'inline entity form' => array(
+      'controller' => 'Drupal\\capkopper_special_item\\Entity\\InlineFormController\\Item',
+    ),
+    'metadata controller class' => 'Drupal\\capkopper_special_item\\Entity\\MetadataController\\Item',
+    //'metatags' => TRUE,
+    //'token type' => 'capkopper_special_item',
+  );
+  // The entity that holds information about the entity types.
+  $return['capkopper_special_item_type'] = array(
+    'label' => t('Special item Type'),
+    'entity class' => 'Drupal\\capkopper_special_item\\Entity\\ItemType',
+    'controller class' => 'Drupal\\capkopper_special_item\\Entity\\APIController\\ItemType',
+    'base table' => 'capkopper_special_item_type',
+    'fieldable' => FALSE,
+    'bundle of' => 'capkopper_special_item',
+    'exportable' => TRUE,
+    'metatags' => FALSE,
+    'entity keys' => array(
+      'id' => 'id',
+      'name' => 'type',
+      'label' => 'label',
+    ),
+    'access callback' => 'capkopper_special_item_type_access',
+    'module' => 'capkopper_special_item',
+    // Enable the entity API's admin UI.
+    'admin ui' => array(
+      'path' => 'admin/structure/special-item',
+      'file' => 'includes/capkopper_special_item_type.admin.inc',
+      'controller class' => 'Drupal\\capkopper_special_item\\Entity\\UIController\\ItemType',
+    ),
+    'metadata controller class' => '',
+  );
+
+  return $return;
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function capkopper_special_item_entity_info_alter(&$entity_info) {
+  foreach (capkopper_special_item_get_types() as $type => $info) {
+    $entity_info['capkopper_special_item']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/special-item/manage/%capkopper_special_item_type',
+        'real path' => 'admin/structure/special-item/manage/' . $type,
+        'bundle argument' => 4,
+        'access arguments' => array('administer capkopper_special_item types'),
+      ),
+    );
+  }
+}
+
+/**
+ * Implements hook_permission().
+ */
+function capkopper_special_item_permission() {
+  // We set up permisssions to manage entity types, manage all entities and the
+  // permissions for each individual entity.
+  $permissions = array(
+    'administer capkopper_special_item types' => array(
+      'title' => t('Administer special item types'),
+      'description' => t('Create and delete fields for special item types, and set their permissions.'),
+    ),
+    'administer capkopper_special_item entities' => array(
+      'title' => t('Administer special item'),
+      'description' => t('Edit and delete all Special items'),
+    ),
+  );
+
+  // Generate permissions.
+  foreach (capkopper_special_item_get_types() as $type) {
+    $type_name = check_plain($type->type);
+    $permissions += array(
+      "view any capkopper_special_item entity of type $type_name" => array(
+        'title' => t('%type_name: view any special item', array('%type_name' => $type->label)),
+      ),
+      "edit any capkopper_special_item entity of type $type_name" => array(
+        'title' => t('%type_name: edit any special item', array('%type_name' => $type->label)),
+      ),
+      "delete any capkopper_special_item entity of type $type_name" => array(
+        'title' => t('%type_name: delete any special item', array('%type_name' => $type->label)),
+      ),
+    );
+  }
+
+  return $permissions;
+}
+
+/**
+ * Implements hook_theme().
+ */
+function capkopper_special_item_theme() {
+  return array(
+    'capkopper_special_item' => array(
+      'render element' => 'elements',
+      'path' => drupal_get_path('module', 'capkopper_special_item') . '/theme',
+      'template' => 'capkopper-special-item',
+      'file' => 'theme.inc',
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter().
+ */
+function capkopper_special_item_menu_local_tasks_alter(&$data, $router_item, $root_path) {
+  // Add action link 'admin/content/special-item/add'
+  // on 'admin/content/special-item'.
+  if ($root_path == 'admin/content/special-item') {
+    $item = menu_get_item('admin/content/special-item/add');
+    if ($item['access']) {
+      $data['actions']['output'][] = array(
+        '#theme' => 'menu_local_action',
+        '#link' => $item,
+      );
+    }
+  }
+}
+
+/**
+ * Determines whether the given user has access to a special item.
+ *
+ * @param string $op
+ *   The operation being performed. One of 'view', 'update', 'create', 'delete'
+ *   or just 'edit' (being the same as 'create' or 'update').
+ *
+ * @param object $entity
+ *   Optionally a special item or a special item type to check access for.
+ *   If nothing is given, access for all special item is determined.
+ *
+ * @param object $account
+ *   The user to check for. Leave it to NULL to check for the global user.
+ *
+ * @return bool
+ *   Whether access is allowed or not.
+ */
+function capkopper_special_item_access($op, $entity = NULL, $account = NULL) {
+  if (user_access('administer capkopper_special_item entities', $account)) {
+    return TRUE;
+  }
+
+  if (isset($entity) && $type_name = $entity->type) {
+    if (user_access("$op any capkopper_special_item entity of type $type_name", $account)) {
+      return TRUE;
+    }
+  }
+
+  $access = FALSE;
+
+  // Allow other modules to change access.
+  $context = array(
+    'op' => $op,
+    'entity' => $entity,
+    'account' => $account,
+  );
+  drupal_alter('capkopper_special_item_access', $access, $context);
+
+  return $access;
+}
+
+/**
+ * Implements hook_file_download_access().
+ *
+ * This hook is grants access to files based on a user's access to the entity
+ * a file is attached to. For example, users with access to a special item should be
+ * allowed to download files attached to that special item. Here we do this on a per-
+ * field basis for files attached to Special items.
+ *
+ * @param $field
+ *   The field to which the file belongs.
+ * @param $entity_type
+ *   The type of $entity; for example, 'node' or 'user' or 'capkopper_special_item'.
+ * @param $entity
+ *   The $entity to which $file is referenced.
+ *
+ * @return
+ *   TRUE if access should be allowed by this entity or FALSE if denied. Note
+ *   that denial may be overridden by another entity controller, making this
+ *   grant permissive rather than restrictive.
+ */
+function capkopper_special_item_file_download_access($field, $entity_type, $entity) {
+  if ($entity_type == 'capkopper_special_item') {
+    return field_access('view', $field, $entity_type, $entity);
+  }
+}
+
+/**
+ * Entity label callback.
+ */
+function capkopper_special_item_label($entity, $entity_type) {
+  return empty($entity) ? t('New special item') : $entity->label;
+}
+
+/**
+ * Access callback for the entity API.
+ */
+function capkopper_special_item_type_access($op, $type = NULL, $account = NULL) {
+  return user_access('administer capkopper_special_item types', $account);
+}
+
+/**
+ * Gets an array of all special item types, keyed by the type name.
+ *
+ * @param string $type_name
+ *   If set, the type with the given name is returned.
+ *
+ * @return mixed
+ *   Depending whether $type isset, an array of special item types
+ *   or a single one.
+ */
+function capkopper_special_item_get_types($type_name = NULL) {
+  // Use the advanced drupal_static() pattern since this is called very often.
+  static $drupal_static_fast;
+  $cache_key = 'capkopper_special_item_types';
+
+  if (!isset($drupal_static_fast)) {
+    $drupal_static_fast[$cache_key] = &drupal_static(__FUNCTION__);
+  }
+  $capkopper_special_item_types = &$drupal_static_fast[$cache_key];
+
+  if (empty($capkopper_special_item_types)) {
+    if ($cache = cache_get($cache_key)) {
+      $capkopper_special_item_types = $cache->data;
+    }
+  }
+  // $capkopper_special_item_types may be set but might not have our $type_name if
+  // called first for other $type_name.
+  if (empty($capkopper_special_item_types) || (isset($type_name) && empty($capkopper_special_item_types[$type_name]))) {
+    if (!isset($type_name)) {
+      $capkopper_special_item_types = entity_load_multiple_by_name('capkopper_special_item_type', FALSE);
+    }
+    else {
+      $types = entity_load_multiple_by_name('capkopper_special_item_type', array($type_name));
+      if (empty($types)) {
+        return FALSE;
+      }
+      $capkopper_special_item_types[$type_name] = array_shift($types);
+    }
+    if (!isset($type_name)) {
+      // Only set the cache if retrieved all special item types.
+      cache_set($cache_key, $capkopper_special_item_types);
+    }
+  }
+  if (isset($type_name)) {
+    // Even though $type_name was set it might not be valid
+    return isset($capkopper_special_item_types[$type_name]) ? $capkopper_special_item_types[$type_name] : NULL;
+  }
+  return $capkopper_special_item_types;
+}
+
+/**
+ * Clears the special item type cache.
+ */
+function capkopper_special_item_type_cache_reset() {
+  cache_clear_all('capkopper_special_item_types', 'cache');
+  drupal_static_reset('capkopper_special_item_get_types');
+}
+
+/**
+ * Menu argument loader; Load a special item type by string.
+ *
+ * @param string $type
+ *   The machine-readable name of a special item type to load.
+ *
+ * @return SpecialItemType
+ *   A special item type array or FALSE if $type does not exist.
+ */
+function capkopper_special_item_type_load($type) {
+  return capkopper_special_item_get_types($type);
+}
+
+/**
+ * Fetch a special item object.
+ *
+ * @param int $item_id
+ *   Integer specifying the special item id.
+ *
+ * @return SpecialItem
+ *   A fully-loaded object or FALSE if it cannot be loaded.
+ *
+ * @see entity_load_single()
+ */
+function capkopper_special_item_load($item_id) {
+  return entity_load_single('capkopper_special_item', $item_id);
+}
+
+/**
+ * Load multiple special item based on certain conditions.
+ *
+ * @param array $item_ids
+ *   An array of special item IDs.
+ *
+ * @param array $conditions
+ *   An array of conditions to match against the {capkopper_special_item} table.
+ *
+ * @param bool $reset
+ *   A boolean indicating that the internal cache should be reset.
+ *
+ * @return SpecialItem[]
+ *   An array of objects, indexed by item_id.
+ *
+ * @see entity_load()
+ * @see capkopper_special_item_load()
+ */
+function capkopper_special_item_load_multiple($item_ids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('capkopper_special_item', $item_ids, $conditions, $reset);
+}
+
+/**
+ * Deletes a special item.
+ */
+function capkopper_special_item_delete(SpecialItem $capkopper_special_item) {
+  $capkopper_special_item->delete();
+}
+
+/**
+ * Delete multiple special item.
+ *
+ * @param array $item_ids
+ *   An array of special item IDs.
+ */
+function capkopper_special_item_delete_multiple(array $item_ids) {
+  return entity_delete_multiple('capkopper_special_item', $item_ids);
+}
+
+/**
+ * Create a special item object.
+ *
+ * @return SpecialItem
+ */
+function capkopper_special_item_create($values = array()) {
+  return entity_create('capkopper_special_item', $values);
+}
+
+/**
+ * Saves a special item to the database.
+ *
+ * @param string $capkopper_special_item
+ *   The special item object.
+ */
+function capkopper_special_item_save(SpecialItem $capkopper_special_item) {
+  return entity_save('capkopper_special_item', $capkopper_special_item);
+}
+
+/**
+ * Saves a special item type to the db.
+ */
+function capkopper_special_item_type_save(SpecialItemType $type) {
+  return entity_save('capkopper_special_item_type', $type);
+}
+
+/**
+ * Deletes a special item type from the db.
+ */
+function capkopper_special_item_type_delete(SpecialItemType $type) {
+  $type->delete();
+}
+
+/**
+ * Menu title callback for showing individual entities.
+ */
+function capkopper_special_item_page_title(SpecialItem $capkopper_special_item) {
+  return $capkopper_special_item->label;
+}
+
+/**
+ * Sets up content to show an individual special item.
+ */
+function capkopper_special_item_page_view(SpecialItem $capkopper_special_item, $view_mode = 'full') {
+  return entity_view('capkopper_special_item', array($capkopper_special_item), $view_mode);
+}
+
+/**
+ * Returns the options list for the special item status property.
+ */
+function capkopper_special_item_status_options_list() {
+  return array(
+    0 => t('Disabled'),
+    1 => t('Active'),
+  );
+}
+
+/**
+ * Implements hook_action_info().
+ */
+function capkopper_special_item_action_info() {
+  return array(
+    'capkopper_special_item_enable_action' => array(
+      'type' => 'capkopper_special_item',
+      'label' => t('Enable special item'),
+      'configurable' => FALSE,
+      'behavior' => array('changes_property'),
+    ),
+    'capkopper_special_item_disable_action' => array(
+      'type' => 'capkopper_special_item',
+      'label' => t('Disable special item'),
+      'configurable' => FALSE,
+      'behavior' => array('changes_property'),
+    ),
+    'capkopper_special_item_assign_creator_action' => array(
+      'type' => 'capkopper_special_item',
+      'label' => t('Change the creator of special item'),
+      'configurable' => TRUE,
+      'behavior' => array('changes_property'),
+    ),
+    'capkopper_special_item_save_action' => array(
+      'type' => 'capkopper_special_item',
+      'label' => t('Save special item'),
+      'configurable' => FALSE,
+    ),
+  );
+}
+
+/**
+ * Sets the status of a special item to 1 (active).
+ *
+ * @param SpecialItem $capkopper_special_item
+ *   A special item object.
+ * @param $context
+ *   (optional) Array of additional information about what triggered the action.
+ *   Not used for this action.
+ *
+ * @ingroup actions
+ */
+function capkopper_special_item_enable_action(SpecialItem $capkopper_special_item, $context = array()) {
+  $capkopper_special_item->status = 1;
+  $type = capkopper_special_item_get_types($capkopper_special_item->type);
+  watchdog('action', 'Set @type %title to active.', array('@type' => $type->label, '%title' => $capkopper_special_item->label));
+}
+
+/**
+ * Sets the status of a special item to 0 (disabled).
+ *
+ * @param SpecialItem $capkopper_special_item
+ *   A special item object.
+ * @param $context
+ *   (optional) Array of additional information about what triggered the action.
+ *   Not used for this action.
+ *
+ * @ingroup actions
+ */
+function capkopper_special_item_disable_action(SpecialItem $capkopper_special_item, $context = array()) {
+  $capkopper_special_item->status = 0;
+  $type = capkopper_special_item_get_types($capkopper_special_item->type);
+  watchdog('action', 'Set @type %title to disabled.', array('@type' => $type->label, '%title' => $capkopper_special_item->label));
+}
+
+/**
+ * Saves a special item.
+ *
+ * @param SpecialItem $capkopper_special_item
+ *   A special item object.
+ * @param $context
+ *   (optional) Array of additional information about what triggered the action.
+ *   Not used for this action.
+ *
+ * @ingroup actions
+ */
+function capkopper_special_item_save_action(SpecialItem $capkopper_special_item, $context = array()) {
+  return entity_save('capkopper_special_item', $capkopper_special_item);
+  $type = capkopper_special_item_get_types($capkopper_special_item->type);
+  watchdog('action', 'Saved @type %title', array('@type' => $type->label, '%title' => $capkopper_special_item->label));
+}
+
+/**
+ * Assigns a user as creator of a special item.
+ *
+ * @param SpecialItem $capkopper_special_item
+ *   A special item object.
+ * @param $context
+ *   Array with the following elements:
+ *   - 'user_uid': User ID to assign to the special item.
+ *
+ * @see capkopper_special_item_assign_creator_action_form()
+ * @see capkopper_special_item_assign_creator_action_validate()
+ * @see capkopper_special_item_assign_creator_action_submit()
+ * @ingroup actions
+ */
+function capkopper_special_item_assign_creator_action(SpecialItem $capkopper_special_item, $context = array()) {
+  $capkopper_special_item->uid = $context['user_uid'];
+  $creator_name = db_query("SELECT name FROM {users} WHERE uid = :uid", array(':uid' => $context['user_uid']))->fetchField();
+  $type = capkopper_special_item_get_types($capkopper_special_item->type);
+  watchdog('action', 'Changed creator of @type %title to uid %name.', array('@type' =>  $type->label, '%title' => $capkopper_special_item->label, '%name' => $creator_name));
+}
+
+/**
+ * Generates the settings form for capkopper_special_item_assign_creator_action().
+ *
+ * @param $context
+ *   Array of additional information about what triggered the action. Includes
+ *   the following elements:
+ *   - 'user_uid': User ID to assign to the special item.
+ *
+ * @see capkopper_special_item_assign_creator_action_submit()
+ * @see capkopper_special_item_assign_creator_action_validate()
+ *
+ * @ingroup forms
+ */
+function capkopper_special_item_assign_creator_action_form($context) {
+  $description = t('The username of the user to which you would like to assign ownership.');
+  $count = db_query("SELECT COUNT(*) FROM {users}")->fetchField();
+  $creator_name = '';
+  if (isset($context['user_uid'])) {
+    $creator_name = db_query("SELECT name FROM {users} WHERE uid = :uid", array(':uid' => $context['user_uid']))->fetchField();
+  }
+
+  // Use dropdown for fewer than 200 users; textbox for more than that.
+  if (intval($count) < 200) {
+    $options = array();
+    $result = db_query("SELECT uid, name FROM {users} WHERE uid > 0 ORDER BY name");
+    foreach ($result as $data) {
+      $options[$data->name] = $data->name;
+    }
+    $form['creator_name'] = array(
+      '#type' => 'select',
+      '#title' => t('Username'),
+      '#default_value' => $creator_name,
+      '#options' => $options,
+      '#description' => $description,
+    );
+  }
+  else {
+    $form['creator_name'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Username'),
+      '#default_value' => $creator_name,
+      '#autocomplete_path' => 'user/autocomplete',
+      '#size' => '6',
+      '#maxlength' => '60',
+      '#description' => $description,
+    );
+  }
+  return $form;
+}
+
+/**
+ * Validates settings form for capkopper_special_item_assign_creator_action().
+ *
+ * @see capkopper_special_item_assign_creator_action_submit()
+ */
+function capkopper_special_item_assign_creator_action_validate($form, $form_state) {
+  $exists = (bool) db_query_range('SELECT 1 FROM {users} WHERE name = :name', 0, 1, array(':name' => $form_state['values']['creator_name']))->fetchField();
+  if (!$exists) {
+    form_set_error('creator_name', t('Enter a valid username.'));
+  }
+}
+
+/**
+ * Saves settings form for capkopper_special_item_assign_creator_action().
+ *
+ * @see capkopper_special_item_assign_creator_action_validate()
+ */
+function capkopper_special_item_assign_creator_action_submit($form, $form_state) {
+  // Username can change, so we need to store the ID, not the username.
+  $uid = db_query('SELECT uid from {users} WHERE name = :name', array(':name' => $form_state['values']['creator_name']))->fetchField();
+  return array('user_uid' => $uid);
+}
+
+/**
+ * Returns whether the given special item type has support for translations.
+ *
+ * @param $type
+ *   The machine-name of the special item type to check for translation support.
+ *
+ * @return
+ *   TRUE or FALSE indicating translation support for the requested type.
+ */
+function capkopper_special_item_entity_translation_supported_type($type) {
+  return variable_get('language_capkopper_special_item_type_' . $type, 0) == ENTITY_TRANSLATION_ENABLED;
+}
+
+/**
+ * Implements hook_views_api().
+ */
+function capkopper_special_item_views_api($module = NULL, $api = NULL) {
+  return ['api' => 3];
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function capkopper_special_item_ctools_plugin_directory($owner, $plugin_type) {
+  if (in_array($owner, array('page_manager', 'panelizer'))) {
+    return 'plugins/' . $owner . '/' . $plugin_type;
+  }
+}
+
+/**
+ * Implements hook_feeds_plugins().
+ */
+function capkopper_special_item_feeds_plugins() {
+  $info = array();
+
+  $info['SpecialItemProcessor'] = array(
+    'name' => 'Special Item processor',
+    'description' => 'Process special items.',
+    'help' => 'Custom Feeds processor for Special Items.',
+    'handler' => array(
+      'parent' => 'FeedsProcessor',
+      'class' => 'Drupal\\capkopper_special_item\\Feeds\\FeedsSpecialItemProcessor',
+      'file' => 'FeedsSpecialItemProcessor.inc',
+      'path' => drupal_get_path('module', 'capkopper_special_items') . '/src/Feeds',
+
+    ),
+  );
+
+  return $info;
+}

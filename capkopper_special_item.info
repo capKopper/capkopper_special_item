@@ -1,0 +1,11 @@
+name = capKopper Special Item
+description = Provide entity that does not have a "view" page by default.
+core = 7.x
+package = capKopper
+dependencies[] = defaultconfig
+dependencies[] = entity
+dependencies[] = views
+dependencies[] = xautoload
+configure = admin/structure/special-item
+features[defaultconfig][] = views_default_views:special_items
+features[features_api][] = api:2
