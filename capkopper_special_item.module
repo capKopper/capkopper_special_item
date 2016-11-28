@@ -699,9 +699,8 @@ function capkopper_special_item_feeds_plugins() {
     'handler' => array(
       'parent' => 'FeedsProcessor',
       'class' => 'Drupal\\capkopper_special_item\\Feeds\\FeedsSpecialItemProcessor',
-      'file' => 'FeedsSpecialItemProcessor.inc',
+      'file' => FALSE, // Need a patch from #2579155.
       'path' => drupal_get_path('module', 'capkopper_special_items') . '/src/Feeds',
-
     ),
   );
 
